@@ -5,6 +5,7 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -42,7 +43,7 @@ func ClaudeJSONPath() (string, error) {
 // silently overwriting.
 func WriteMemoriaEntry(path string, entry McpEntry) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("claude.json: create parent dir %s: %w", dir, err)
 	}
 
@@ -50,7 +51,7 @@ func WriteMemoriaEntry(path string, entry McpEntry) error {
 	var doc map[string]any
 	raw, err := os.ReadFile(path)
 	switch {
-	case os.IsNotExist(err):
+	case errors.Is(err, os.ErrNotExist):
 		// Fresh machine — start with an empty document.
 		doc = make(map[string]any)
 	case err != nil:

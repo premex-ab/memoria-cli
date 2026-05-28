@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,13 +12,20 @@ import (
 	"testing"
 )
 
-// fakeWhoamiServer returns a test server that always replies 200 with the
-// given identity JSON.
-func fakeWhoamiServer(t *testing.T, tenantID, brainID string, scopes []string) *httptest.Server {
+// fakeWhoamiServer returns a test server that asserts the inbound Authorization
+// header matches "Bearer <expectedToken>" (responding 401 otherwise) and replies
+// 200 with the given identity JSON on success.
+func fakeWhoamiServer(t *testing.T, expectedToken, tenantID, brainID string, scopes []string) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/whoami" {
 			http.NotFound(w, r)
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer "+expectedToken {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"error":"missing or invalid Authorization header"}`))
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -63,7 +71,7 @@ func TestInit_Success(t *testing.T) {
 	// Clear any token env var so the file backend is used.
 	t.Setenv("MEMORIA_API_KEY", "")
 
-	srv := fakeWhoamiServer(t, "t", "b", []string{"memory:read"})
+	srv := fakeWhoamiServer(t, "mem_live_testtoken", "t", "b", []string{"memory:read"})
 	defer srv.Close()
 
 	stdout, _, err := runInit(t, "mem_live_testtoken", "--api-url", srv.URL)
@@ -144,7 +152,7 @@ func TestInit_InvalidToken_NonZeroExitAndStderr(t *testing.T) {
 
 	// ~/.claude.json must NOT be written.
 	claudePath := filepath.Join(home, ".claude.json")
-	if _, err := os.Stat(claudePath); !os.IsNotExist(err) {
+	if _, err := os.Stat(claudePath); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("expected ~/.claude.json to NOT exist after 401, but it does")
 	}
 }

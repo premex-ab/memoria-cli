@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/premex-ab/memoria-cli/internal/version"
 )
 
 // ErrInvalidToken is the sentinel error returned (wrapped in AuthError) when
@@ -68,6 +70,7 @@ func (c *Client) Whoami(ctx context.Context, token string) (*WhoamiResponse, err
 		return nil, fmt.Errorf("whoami: build request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("User-Agent", "memoria-cli/"+version.Version)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -75,7 +78,9 @@ func (c *Client) Whoami(ctx context.Context, token string) (*WhoamiResponse, err
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, err := io.ReadAll(resp.Body)
+	// Limit the response body to 64 KiB to guard against a misbehaving server
+	// returning a huge error body that would OOM the CLI.
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 	if err != nil {
 		return nil, fmt.Errorf("whoami: read body: %w", err)
 	}

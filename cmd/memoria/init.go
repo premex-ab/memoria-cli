@@ -9,7 +9,6 @@ import (
 	"github.com/premex-ab/memoria-cli/internal/api"
 	"github.com/premex-ab/memoria-cli/internal/auth"
 	"github.com/premex-ab/memoria-cli/internal/config"
-	config_pkg "github.com/premex-ab/memoria-cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -66,18 +65,19 @@ mechanism — the token itself is never stored in ~/.claude.json.`,
 			}
 
 			// 4. Write the MCP entry into ~/.claude.json.
-			claudePath, err := config_pkg.ClaudeJSONPath()
+			claudePath, err := config.ClaudeJSONPath()
 			if err != nil {
 				fmt.Fprintf(stderr, "memoria: cannot find claude.json path: %v\n", err)
 				return err
 			}
-			entry := config_pkg.McpEntry{
+			entry := config.McpEntry{
 				Type:          "http",
 				URL:           apiURL + "/mcp",
 				HeadersHelper: "memoria headers",
 			}
-			if err := config_pkg.WriteMemoriaEntry(claudePath, entry); err != nil {
+			if err := config.WriteMemoriaEntry(claudePath, entry); err != nil {
 				fmt.Fprintf(stderr, "memoria: failed to write ~/.claude.json: %v\n", err)
+				fmt.Fprintln(stderr, "memoria: the token was stored successfully — re-run 'memoria init <token>' to retry the MCP config step.")
 				return err
 			}
 
