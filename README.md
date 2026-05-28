@@ -30,10 +30,6 @@ The Memoria service itself (api, web app, dashboard) lives in a separate private
 - [docs/scopes.md](docs/scopes.md) — API key scopes and per-endpoint access control
 - [docs/examples/glyph-cron-on-memoria.md](docs/examples/glyph-cron-on-memoria.md) — migrating a daily-maintenance cron from a wiki to Memoria
 
-## Design spec
-
-See [docs/superpowers/specs/2026-05-28-memoria-cli.md](https://github.com/premex-ab/memoria/blob/main/docs/superpowers/specs/2026-05-28-memoria-cli.md) (private repo) for the full design — locked decisions, repo split rationale, slice plan.
-
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
