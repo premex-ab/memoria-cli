@@ -1,0 +1,23 @@
+# Compiled binaries
+memoria
+memoria-*
+*.test
+*.out
+*.exe
+
+# Go build cache / module cache shouldn't leak
+/dist/
+/build/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local-only secrets — should never end up here, defense in depth
+.env
+.env.*
+!.env.example
+*.pem
+*.key
