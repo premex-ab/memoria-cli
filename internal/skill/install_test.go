@@ -1,6 +1,7 @@
 package skill
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,12 +24,12 @@ func TestEmbeddedVersion(t *testing.T) {
 // doesn't exist yet.
 func TestInstall_FreshHome(t *testing.T) {
 	home := t.TempDir()
-	outcome, err := Install(home)
+	result, err := Install(home, &bytes.Buffer{})
 	if err != nil {
 		t.Fatalf("Install returned error: %v", err)
 	}
-	if outcome != OutcomeInstalled {
-		t.Errorf("expected OutcomeInstalled, got %v", outcome)
+	if result.Outcome != OutcomeInstalled {
+		t.Errorf("expected OutcomeInstalled, got %v", result.Outcome)
 	}
 
 	destPath := filepath.Join(home, ".claude", "skills", "memoria", "SKILL.md")
@@ -71,12 +72,12 @@ func TestInstall_SkipsWhenSameVersion(t *testing.T) {
 		t.Fatalf("stat before: %v", err)
 	}
 
-	outcome, err := Install(home)
+	result, err := Install(home, &bytes.Buffer{})
 	if err != nil {
 		t.Fatalf("Install returned error: %v", err)
 	}
-	if outcome != OutcomeSkipped {
-		t.Errorf("expected OutcomeSkipped, got %v", outcome)
+	if result.Outcome != OutcomeSkipped {
+		t.Errorf("expected OutcomeSkipped, got %v", result.Outcome)
 	}
 
 	// mtime should be unchanged (file not touched).
@@ -106,12 +107,12 @@ func TestInstall_UpdatesWhenEmbeddedIsNewer(t *testing.T) {
 		t.Fatalf("pre-create: %v", err)
 	}
 
-	outcome, err := Install(home)
+	result, err := Install(home, &bytes.Buffer{})
 	if err != nil {
 		t.Fatalf("Install returned error: %v", err)
 	}
-	if outcome != OutcomeUpdated {
-		t.Errorf("expected OutcomeUpdated, got %v", outcome)
+	if result.Outcome != OutcomeUpdated {
+		t.Errorf("expected OutcomeUpdated, got %v", result.Outcome)
 	}
 
 	raw, err := os.ReadFile(destPath)
@@ -139,12 +140,12 @@ func TestInstall_LeavesAloneWhenExistingIsNewer(t *testing.T) {
 		t.Fatalf("pre-create: %v", err)
 	}
 
-	outcome, err := Install(home)
+	result, err := Install(home, &bytes.Buffer{})
 	if err != nil {
 		t.Fatalf("Install returned error: %v", err)
 	}
-	if outcome != OutcomeSkipped {
-		t.Errorf("expected OutcomeSkipped, got %v", outcome)
+	if result.Outcome != OutcomeSkipped {
+		t.Errorf("expected OutcomeSkipped, got %v", result.Outcome)
 	}
 
 	raw, err := os.ReadFile(destPath)
@@ -157,7 +158,8 @@ func TestInstall_LeavesAloneWhenExistingIsNewer(t *testing.T) {
 }
 
 // TestInstall_OverwritesUnparseable verifies that Install replaces a file that
-// has no valid frontmatter, returning OutcomeOverwrittenUnparseable.
+// has no valid frontmatter, returning OutcomeOverwrittenUnparseable, and writes
+// a warning containing "unparseable" and the destination path to stderr.
 func TestInstall_OverwritesUnparseable(t *testing.T) {
 	home := t.TempDir()
 	destDir := filepath.Join(home, ".claude", "skills", "memoria")
@@ -170,12 +172,22 @@ func TestInstall_OverwritesUnparseable(t *testing.T) {
 		t.Fatalf("pre-create: %v", err)
 	}
 
-	outcome, err := Install(home)
+	var stderrBuf bytes.Buffer
+	result, err := Install(home, &stderrBuf)
 	if err != nil {
 		t.Fatalf("Install returned error: %v", err)
 	}
-	if outcome != OutcomeOverwrittenUnparseable {
-		t.Errorf("expected OutcomeOverwrittenUnparseable, got %v", outcome)
+	if result.Outcome != OutcomeOverwrittenUnparseable {
+		t.Errorf("expected OutcomeOverwrittenUnparseable, got %v", result.Outcome)
+	}
+
+	// Stderr must warn about the unparseable file and include the destination path.
+	stderrStr := stderrBuf.String()
+	if !strings.Contains(stderrStr, "unparseable") && !strings.Contains(stderrStr, "frontmatter") {
+		t.Errorf("expected stderr to mention unparseable/frontmatter, got: %q", stderrStr)
+	}
+	if !strings.Contains(stderrStr, destPath) {
+		t.Errorf("expected stderr to contain the destination path %q, got: %q", destPath, stderrStr)
 	}
 
 	raw, err := os.ReadFile(destPath)

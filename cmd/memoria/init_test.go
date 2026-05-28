@@ -148,6 +148,36 @@ func TestInit_Success(t *testing.T) {
 	}
 }
 
+// TestInit_IdempotentSkillInstall runs memoria init twice in the same temp HOME
+// and asserts that the second run succeeds and reports that the skill is already
+// up to date (covering the OutcomeSkipped path).
+func TestInit_IdempotentSkillInstall(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("MEMORIA_API_KEY", "mem_live_testtoken2")
+
+	srv := fakeWhoamiServer(t, "mem_live_testtoken2", "t2", "b2", []string{"memory:read", "memory:write"})
+	defer srv.Close()
+
+	// First run — should install the skill.
+	stdout1, _, err := runInit(t, "mem_live_testtoken2", "--api-url", srv.URL)
+	if err != nil {
+		t.Fatalf("first init run returned error: %v", err)
+	}
+	if !strings.Contains(stdout1, "Installed memoria skill") {
+		t.Errorf("expected first run to install skill, got: %q", stdout1)
+	}
+
+	// Second run — should skip the skill (already up to date).
+	stdout2, _, err := runInit(t, "mem_live_testtoken2", "--api-url", srv.URL)
+	if err != nil {
+		t.Fatalf("second init run returned error: %v", err)
+	}
+	if !strings.Contains(stdout2, "Skill already up to date.") {
+		t.Errorf("expected second run to report skill already up to date, got: %q", stdout2)
+	}
+}
+
 func TestInit_InvalidToken_NonZeroExitAndStderr(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

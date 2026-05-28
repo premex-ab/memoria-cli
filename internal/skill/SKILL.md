@@ -30,26 +30,28 @@ A brain is the memory boundary for one agent. Every API key is bound to exactly 
 
 ## When to use each MCP tool
 
-**`remember(content, source, metadata?)`**
+Memoria MCP is JSON-RPC: every tool call passes named parameters (object-argument style). Required fields are shown plain; optional fields are marked with `?`.
+
+**`remember({ content, sessionId?, source?, metadata?, async? })`**
 Runs a 7-stage extraction pipeline server-side: entity extraction → entity resolution → fact extraction → dedup → temporal → contradiction → commit. Cost: ~$0.10–0.30 per call. Use for findings worth keeping — PR opened, upstream change observed, bug confirmed. Do not use for mid-run trivia.
 
-**`recall(query, asOf?)`**
+**`recall({ query, k?, candidateCount?, asOf? })`**
 Semantic + sparse + graph hybrid search across the brain. Cheap. Use when the agent thinks it already knows something about a topic.
 
-**`get_playbook(branch?, file?, sessionId?)`**
+**`get_playbook({ id?, branch?, file?, sessionId? })`**
 Load the synthesized briefing at session start instead of re-reading raw history. Cheap. Use at the beginning of every session.
 
-**`regenerate_playbook(branch?, file?, sessionId?)`**
+**`regenerate_playbook({ branch?, file?, sessionId? })`**
 Refresh the briefing from current facts so the next session starts fresh. A few cents per call. Use at the end of every session after saving notes.
 
-**`recall_history(entityId)`**
+**`recall_history({ entityId, asOf?, limit? })`**
 Bi-temporal timeline: how has knowledge about one thing changed over time. Cheap. Use for "what was the state of this bug last week?"
 
-**`forget(edgeId)`**
+**`forget({ edgeId, tInvalid?, supersededBy? })`**
 Mark a specific fact invalid — soft delete, history preserved. Cheap. Use to correct stale or wrong facts. Do not hand-edit playbooks; fix the underlying facts instead.
 
-**`relate(fromEntityId, relationType, toEntityId, factText)`**
-Hand-curated relation between two known entities — skips the extraction pipeline. Cheap. Use for curation or stitching two things the agent already knows about.
+**`relate({ fromEntityId, toEntityId, factText, relationType, tValid })`**
+Hand-curated relation between two known entities — skips the extraction pipeline. Cheap. Use for curation or stitching two things the agent already knows about. All five fields are required; `tValid` must be an ISO-8601 datetime string (e.g. `"2026-05-28T00:00:00Z"`).
 
 ## Sub-scopes within a brain
 

@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -59,7 +60,15 @@ func EmbeddedVersion() (string, error) {
 	return parseFrontmatterVersion(EmbeddedSKILL)
 }
 
+// Result describes what Install did.
+type Result struct {
+	Outcome         Outcome
+	EmbeddedVersion string // always populated
+	PreviousVersion string // populated when Outcome == Updated or Skipped (existing file's version); empty for Installed and OverwrittenUnparseable
+}
+
 // Install deposits the embedded skill at homeDir/.claude/skills/memoria/SKILL.md.
+// Warnings are written to stderr.
 //
 // Behaviour:
 //   - If the file does not exist, write it (OutcomeInstalled).
@@ -71,13 +80,13 @@ func EmbeddedVersion() (string, error) {
 //
 // The write is atomic: tempfile → chmod 0600 → rename. Parent dirs are
 // created with 0700 permissions.
-func Install(homeDir string) (Outcome, error) {
+func Install(homeDir string, stderr io.Writer) (Result, error) {
 	destDir := filepath.Join(homeDir, ".claude", "skills", "memoria")
 	destPath := filepath.Join(destDir, "SKILL.md")
 
 	embeddedVer, err := EmbeddedVersion()
 	if err != nil {
-		return OutcomeInstalled, fmt.Errorf("skill: embedded SKILL.md is malformed: %w", err)
+		return Result{Outcome: OutcomeInstalled}, fmt.Errorf("skill: embedded SKILL.md is malformed: %w", err)
 	}
 
 	// Check whether the file already exists.
@@ -85,36 +94,36 @@ func Install(homeDir string) (Outcome, error) {
 	if errors.Is(err, os.ErrNotExist) {
 		// First install — just write it.
 		if err := atomicWrite(destDir, destPath, EmbeddedSKILL); err != nil {
-			return OutcomeInstalled, err
+			return Result{Outcome: OutcomeInstalled, EmbeddedVersion: embeddedVer}, err
 		}
-		return OutcomeInstalled, nil
+		return Result{Outcome: OutcomeInstalled, EmbeddedVersion: embeddedVer}, nil
 	}
 	if err != nil {
-		return OutcomeInstalled, fmt.Errorf("skill: read existing skill file: %w", err)
+		return Result{Outcome: OutcomeInstalled, EmbeddedVersion: embeddedVer}, fmt.Errorf("skill: read existing skill file: %w", err)
 	}
 
 	// File exists — check the version.
 	existingVer, err := parseFrontmatterVersion(existing)
 	if err != nil {
 		// Existing file is unparseable — warn and overwrite.
-		fmt.Fprintf(os.Stderr, "memoria: warning: existing skill file has no valid frontmatter; replacing it\n")
+		fmt.Fprintf(stderr, "memoria: warning: existing skill file at %s has no valid frontmatter; replacing it\n", destPath)
 		if err := atomicWrite(destDir, destPath, EmbeddedSKILL); err != nil {
-			return OutcomeOverwrittenUnparseable, err
+			return Result{Outcome: OutcomeOverwrittenUnparseable, EmbeddedVersion: embeddedVer}, err
 		}
-		return OutcomeOverwrittenUnparseable, nil
+		return Result{Outcome: OutcomeOverwrittenUnparseable, EmbeddedVersion: embeddedVer}, nil
 	}
 
 	cmp := compareSemver(embeddedVer, existingVer)
 	if cmp <= 0 {
 		// Existing is same or newer — leave it alone.
-		return OutcomeSkipped, nil
+		return Result{Outcome: OutcomeSkipped, EmbeddedVersion: embeddedVer, PreviousVersion: existingVer}, nil
 	}
 
 	// Embedded is newer — overwrite.
 	if err := atomicWrite(destDir, destPath, EmbeddedSKILL); err != nil {
-		return OutcomeUpdated, err
+		return Result{Outcome: OutcomeUpdated, EmbeddedVersion: embeddedVer, PreviousVersion: existingVer}, err
 	}
-	return OutcomeUpdated, nil
+	return Result{Outcome: OutcomeUpdated, EmbeddedVersion: embeddedVer, PreviousVersion: existingVer}, nil
 }
 
 // atomicWrite writes data to path via a temp file + rename. Creates parent
@@ -228,6 +237,12 @@ func compareSemver(a, b string) int {
 
 // parseSemver splits "MAJOR.MINOR.PATCH" into three ints. Returns (0,0,0) on
 // any parse error.
+//
+// Phase 1 only handles plain MAJOR.MINOR.PATCH. Pre-release tags
+// (e.g. "0.1.0-rc.1") parse the patch component via strconv.Atoi which
+// silently coerces "0-rc" to "0", so "0.1.0-rc.1" compares equal to "0.1.0".
+// When the embedded version is ever bumped to a pre-release, extend this
+// parser or switch to a real semver library.
 func parseSemver(v string) (major, minor, patch int) {
 	parts := strings.SplitN(v, ".", 3)
 	if len(parts) != 3 {

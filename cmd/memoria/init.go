@@ -89,18 +89,17 @@ mechanism — the token itself is never stored in ~/.claude.json.`,
 			if homeErr != nil {
 				fmt.Fprintf(stderr, "memoria: warning: cannot determine home dir for skill install: %v\n", homeErr)
 			} else {
-				skillOutcome, skillErr := skill.Install(home)
+				skillResult, skillErr := skill.Install(home, stderr)
 				if skillErr != nil {
 					// Non-fatal — MCP entry is already written.
 					fmt.Fprintf(stderr, "memoria: warning: skill install failed: %v\n", skillErr)
 				} else {
 					skillPath := filepath.Join(home, ".claude", "skills", "memoria", "SKILL.md")
-					embVer, _ := skill.EmbeddedVersion()
-					switch skillOutcome {
+					switch skillResult.Outcome {
 					case skill.OutcomeInstalled:
 						fmt.Fprintf(stdout, "Installed memoria skill at %s.\n", skillPath)
 					case skill.OutcomeUpdated:
-						fmt.Fprintf(stdout, "Updated memoria skill (→ %s).\n", embVer)
+						fmt.Fprintf(stdout, "Updated memoria skill (%s → %s).\n", skillResult.PreviousVersion, skillResult.EmbeddedVersion)
 					case skill.OutcomeSkipped:
 						fmt.Fprintln(stdout, "Skill already up to date.")
 					case skill.OutcomeOverwrittenUnparseable:
