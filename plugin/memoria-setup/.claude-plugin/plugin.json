@@ -1,0 +1,13 @@
+{
+  "name": "memoria-setup",
+  "description": "Bootstraps the memoria CLI on-demand in Claude Code sessions. Activates when a session references Memoria but the binary is missing.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Premex AB",
+    "email": "team@premex.se"
+  },
+  "homepage": "https://memoria.premex.se",
+  "repository": "https://github.com/premex-ab/memoria-cli",
+  "license": "Apache-2.0",
+  "keywords": ["memoria", "memory", "mcp", "claude-code"]
+}

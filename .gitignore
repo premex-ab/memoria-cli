@@ -1,6 +1,9 @@
 # Compiled binaries (root-level only — not cmd/memoria/ directory)
 /memoria
 memoria-*
+# but keep the plugin directory
+!plugin/
+!plugin/**
 *.test
 *.out
 *.exe
