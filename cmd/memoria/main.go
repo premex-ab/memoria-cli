@@ -34,6 +34,7 @@ and 'memoria headers' to resolve the active API token as an HTTP header.`,
 	root.Version = version.Version
 
 	root.AddCommand(newHeadersCmd())
+	root.AddCommand(newInitCmd())
 
 	return root
 }
