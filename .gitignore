@@ -1,5 +1,5 @@
-# Compiled binaries
-memoria
+# Compiled binaries (root-level only — not cmd/memoria/ directory)
+/memoria
 memoria-*
 *.test
 *.out
