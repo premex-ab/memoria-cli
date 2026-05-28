@@ -1,6 +1,6 @@
 # API Key Scopes
 
-Every Memoria API key carries one or more scopes. Scopes are enforced by [`apps/api/src/middleware/auth.ts`](https://github.com/premex-ab/memoria/blob/main/apps/api/src/middleware/auth.ts) (REST) and [`apps/api/src/mcp/types.ts`](https://github.com/premex-ab/memoria/blob/main/apps/api/src/mcp/types.ts) (MCP) — both share the same scope vocabulary defined in [`packages/types/src/tenant.ts`](https://github.com/premex-ab/memoria/blob/main/packages/types/src/tenant.ts).
+Every Memoria API key carries one or more scopes. Scopes are enforced server-side on both the REST and MCP surfaces, which share the same scope vocabulary.
 
 The scopes are:
 
@@ -14,13 +14,13 @@ The scopes are:
 
 `offline_access` is only accepted at the OAuth `/oauth/authorize` endpoint (and stored in the resulting token's scope list). It is not enforced by `requireScope` on REST or MCP routes.
 
-A key may hold any subset. `admin` is **not** a superset shorthand — `requireScope` explicitly treats `admin` as a wildcard (see `requireScope` in [`apps/api/src/middleware/auth.ts`](https://github.com/premex-ab/memoria/blob/main/apps/api/src/middleware/auth.ts) and the matching helper in [`apps/api/src/mcp/types.ts`](https://github.com/premex-ab/memoria/blob/main/apps/api/src/mcp/types.ts)); for everything else, the requested scope must be present in the key's scope list.
+A key may hold any subset. `admin` is **not** a superset shorthand — the scope checker explicitly treats `admin` as a wildcard on both REST and MCP; for everything else, the requested scope must be present in the key's scope list.
 
 There is **no `graph:read` scope**. Reading edges, entities, and recall results all gate on `memory:read`.
 
 ## Per-endpoint reference
 
-REST routes live under [`apps/api/src/routes/`](https://github.com/premex-ab/memoria/blob/main/apps/api/src/routes); MCP tool handlers live under [`apps/api/src/mcp/tools/`](https://github.com/premex-ab/memoria/blob/main/apps/api/src/mcp/tools). The table below pairs them for quick comparison.
+The table below pairs each REST route with its MCP tool for quick comparison.
 
 | Capability                       | REST                                          | Required scope  | MCP tool                  |
 |----------------------------------|-----------------------------------------------|-----------------|---------------------------|
@@ -76,7 +76,7 @@ A missing or unknown bearer token returns `401 missing_auth` / `401 invalid_auth
 
 ## Provisioning
 
-Keys are minted via the dashboard at `/dashboard/brains/[brainId]/keys` (Firebase-auth route, dashboard `admin` role required — see [`apps/api/src/routes/dashboard/keys.ts`](https://github.com/premex-ab/memoria/blob/main/apps/api/src/routes/dashboard/keys.ts)). The selectable scope set is exactly the four listed above; the plain key is returned **once** at create time.
+Keys are minted via the dashboard at `/dashboard/brains/[brainId]/keys` (Firebase-auth route, dashboard `admin` role required). The selectable scope set is exactly the four listed above; the plain key is returned **once** at create time.
 
 ---
 
@@ -84,7 +84,7 @@ Keys are minted via the dashboard at `/dashboard/brains/[brainId]/keys` (Firebas
 
 The word "scope" is overloaded in Memoria: API-key scopes (above) gate **what** an agent can do, while **playbook scopes** narrow **which subset of the KG** a playbook covers. The two are independent — both apply to a single `regenerate_playbook` call.
 
-A `PlaybookScope` is an object with up to three optional sub-scope dimensions, defined in [`packages/types/src/playbook.ts`](https://github.com/premex-ab/memoria/blob/main/packages/types/src/playbook.ts). The brain (isolation unit) is separate from the playbook scope — it comes from the API key, not from scope arguments.
+A `PlaybookScope` is an object with up to three optional sub-scope dimensions. The brain (isolation unit) is separate from the playbook scope — it comes from the API key, not from scope arguments.
 
 | Dim         | Episode field matched                              |
 |-------------|----------------------------------------------------|

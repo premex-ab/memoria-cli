@@ -2,7 +2,7 @@
 
 Memoria is memory for AI agents that lasts beyond a single session. An agent runs, learns things, saves them. Next session — even days later, even a different agent operating in the same scope — it starts already knowing what was learned, without having to re-read everything raw.
 
-This doc explains the mental model in plain words. For the actual implementation shape, see [architecture.md (private repo)](https://github.com/premex-ab/memoria/blob/main/docs/architecture.md).
+This doc explains the mental model in plain words.
 
 ## Five words
 
@@ -109,7 +109,6 @@ Both paths arrive at exactly the same `(tenantId, brainId, scopes)` binding insi
 
 ## Where to go next
 
-- [architecture.md (private repo)](https://github.com/premex-ab/memoria/blob/main/docs/architecture.md) — the actual shape of the system (storage layout, pipelines, services, auth surfaces).
 - [scopes.md](scopes.md) — the permission model for API keys.
-- The MCP tool reference exposed by your client (or read [`apps/api/src/mcp/server.ts`](https://github.com/premex-ab/memoria/blob/main/apps/api/src/mcp/server.ts)) — every tool description is written in the agent's language.
+- The MCP tool reference exposed by your client — every tool description is written in the agent's language.
 - [examples/glyph-cron-on-memoria.md](examples/glyph-cron-on-memoria.md) — a worked migration from a wiki-based daily cron to Memoria, updated to use a brain-bound API key.
