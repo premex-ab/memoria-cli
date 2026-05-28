@@ -3,12 +3,15 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/premex-ab/memoria-cli/internal/api"
 	"github.com/premex-ab/memoria-cli/internal/auth"
 	"github.com/premex-ab/memoria-cli/internal/config"
+	"github.com/premex-ab/memoria-cli/internal/skill"
 	"github.com/spf13/cobra"
 )
 
@@ -81,7 +84,31 @@ mechanism — the token itself is never stored in ~/.claude.json.`,
 				return err
 			}
 
-			// 5. Update state.
+			// 5. Install or update the embedded skill.
+			home, homeErr := os.UserHomeDir()
+			if homeErr != nil {
+				fmt.Fprintf(stderr, "memoria: warning: cannot determine home dir for skill install: %v\n", homeErr)
+			} else {
+				skillResult, skillErr := skill.Install(home, stderr)
+				if skillErr != nil {
+					// Non-fatal — MCP entry is already written.
+					fmt.Fprintf(stderr, "memoria: warning: skill install failed: %v\n", skillErr)
+				} else {
+					skillPath := filepath.Join(home, ".claude", "skills", "memoria", "SKILL.md")
+					switch skillResult.Outcome {
+					case skill.OutcomeInstalled:
+						fmt.Fprintf(stdout, "Installed memoria skill at %s.\n", skillPath)
+					case skill.OutcomeUpdated:
+						fmt.Fprintf(stdout, "Updated memoria skill (%s → %s).\n", skillResult.PreviousVersion, skillResult.EmbeddedVersion)
+					case skill.OutcomeSkipped:
+						fmt.Fprintln(stdout, "Skill already up to date.")
+					case skill.OutcomeOverwrittenUnparseable:
+						fmt.Fprintln(stdout, "Replaced unparseable existing skill.")
+					}
+				}
+			}
+
+			// 6. Update state. (step numbering continues from 5 above)
 			state, err := config.Read()
 			if err != nil {
 				// Non-fatal: start from a zero state.
@@ -101,7 +128,7 @@ mechanism — the token itself is never stored in ~/.claude.json.`,
 				fmt.Fprintf(stderr, "memoria: warning: failed to update state file: %v\n", err)
 			}
 
-			// 6. Done.
+			// 7. Done.
 			fmt.Fprintln(stdout, "Done. Open a Claude Code session and try recall('hello world').")
 			return nil
 		},
