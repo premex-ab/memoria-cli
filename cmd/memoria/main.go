@@ -26,6 +26,9 @@ Use 'memoria init <token>' to connect a brain to your Claude Code sessions,
 and 'memoria headers' to resolve the active API token as an HTTP header.`,
 		// Don't print usage on error — errors are usually auth failures, not syntax errors.
 		SilenceUsage: true,
+		// Don't let cobra print the error again — each subcommand's RunE prints its own
+		// styled message to stderr; we just need cobra to drive the non-zero exit.
+		SilenceErrors: true,
 	}
 
 	root.Version = version.Version

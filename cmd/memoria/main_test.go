@@ -78,8 +78,14 @@ func TestHeaders_NoToken_NonZeroExit(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected non-zero exit when no token is configured")
 	}
-	if stderr.Len() == 0 {
+	stderrStr := stderr.String()
+	if stderrStr == "" {
 		t.Error("expected something on stderr when no token is configured")
+	}
+	// Verify our styled error message appears exactly once — if cobra's SilenceErrors
+	// is not set, the error gets printed twice (once by our RunE, once by cobra).
+	if count := strings.Count(stderrStr, "no API token found"); count != 1 {
+		t.Errorf("expected 'no API token found' to appear exactly once in stderr, got %d occurrences:\n%s", count, stderrStr)
 	}
 }
 

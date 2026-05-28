@@ -6,7 +6,11 @@
 //  3. ~/.config/memoria/credentials file fallback
 package auth
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+	"os"
+)
 
 // Source describes where a token came from.
 type Source int
@@ -55,7 +59,14 @@ func Resolve() (string, Source, error) {
 	// 3. File fallback.
 	token, err := fileRead()
 	if err != nil {
-		return "", SourceUnknown, ErrNoToken
+		// A missing file is the normal "not configured yet" state — fall through to
+		// ErrNoToken so the caller sees a clean "run memoria init" message.
+		// Any other error (bad permissions, parse failure, etc.) is actionable and
+		// should be surfaced directly so the user knows what to fix.
+		if errors.Is(err, os.ErrNotExist) {
+			return "", SourceUnknown, ErrNoToken
+		}
+		return "", SourceUnknown, fmt.Errorf("file backend: %w", err)
 	}
 	return token, SourceFile, nil
 }

@@ -8,6 +8,10 @@ import (
 	"strings"
 )
 
+// ErrUnsafePermissions is returned by fileRead when the credentials file has
+// permissions more permissive than 0600. Callers can match with errors.Is.
+var ErrUnsafePermissions = errors.New("credentials file has unsafe permissions")
+
 const credentialsFile = "credentials"
 
 // credentialsPath returns ~/.config/memoria/credentials.
@@ -29,7 +33,7 @@ func fileRead() (string, error) {
 
 	info, err := os.Stat(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return "", errors.New("credentials file not found")
+		return "", os.ErrNotExist
 	}
 	if err != nil {
 		return "", fmt.Errorf("stat credentials: %w", err)
@@ -38,8 +42,8 @@ func fileRead() (string, error) {
 	// Reject if mode is more permissive than 0600 (owner read+write only).
 	if info.Mode().Perm()&0o177 != 0 {
 		return "", fmt.Errorf(
-			"credentials file %s has unsafe permissions (%v); run: chmod 600 %s",
-			path, info.Mode().Perm(), path,
+			"%w: %s has permissions %v; run: chmod 600 %s",
+			ErrUnsafePermissions, path, info.Mode().Perm(), path,
 		)
 	}
 
@@ -54,17 +58,49 @@ func fileRead() (string, error) {
 	return token, nil
 }
 
-// fileWrite writes the token to ~/.config/memoria/credentials with 0600 perms.
+// fileWrite atomically writes the token to ~/.config/memoria/credentials with
+// 0600 perms. Uses a temp file in the same directory so the rename is atomic.
 // Creates parent directories as needed.
 func fileWrite(token string) error {
 	path, err := credentialsPath()
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}
-	return os.WriteFile(path, []byte(token+"\n"), 0o600)
+
+	// Write to a temp file in the same directory so the rename is atomic.
+	tmp, err := os.CreateTemp(dir, "credentials-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temp credentials file: %w", err)
+	}
+	tmpName := tmp.Name()
+	committed := false
+	defer func() {
+		if !committed {
+			os.Remove(tmpName)
+		}
+	}()
+
+	if _, err := tmp.WriteString(token + "\n"); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write temp credentials: %w", err)
+	}
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return fmt.Errorf("chmod temp credentials: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temp credentials: %w", err)
+	}
+
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("rename credentials file: %w", err)
+	}
+	committed = true
+	return nil
 }
 
 // fileDelete removes the credentials file. Ignores not-found.

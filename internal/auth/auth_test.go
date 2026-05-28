@@ -1,9 +1,11 @@
 package auth
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -114,6 +116,15 @@ func TestResolveFile_RejectsUnsafePerms(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 0644 permissions file, got nil")
 	}
+	// Fix 5: unsafe permissions must NOT collapse into ErrNoToken — the user
+	// needs an actionable error message, not a "run memoria init" prompt.
+	if errors.Is(err, ErrNoToken) {
+		t.Errorf("expected a non-ErrNoToken error for unsafe permissions, got ErrNoToken")
+	}
+	// The error message should mention permissions so the user knows what to fix.
+	if !strings.Contains(err.Error(), "permission") {
+		t.Errorf("expected error message to mention 'permission', got: %v", err)
+	}
 }
 
 func TestResolveFile_NotFound(t *testing.T) {
@@ -157,6 +168,40 @@ func TestResolutionOrder_EnvBeatsFile(t *testing.T) {
 	}
 	if tok != "mem_live_env_wins" {
 		t.Errorf("expected mem_live_env_wins, got %q", tok)
+	}
+}
+
+// -- fileWrite atomicity -------------------------------------------------------
+
+// TestFileWrite_NoTmpFilesAfterSuccess verifies that fileWrite leaves no
+// .tmp files in the credentials directory after a successful write (Fix 4).
+func TestFileWrite_NoTmpFilesAfterSuccess(t *testing.T) {
+	isolateEnv(t)
+	home := overrideHome(t)
+
+	const token = "mem_live_atomic_test"
+	if err := fileWrite(token); err != nil {
+		t.Fatalf("fileWrite: %v", err)
+	}
+
+	dir := filepath.Join(home, ".config", "memoria")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".tmp") {
+			t.Errorf("leftover temp file after successful fileWrite: %s", e.Name())
+		}
+	}
+
+	// Verify the credentials file itself is present and readable.
+	tok, err := fileRead()
+	if err != nil {
+		t.Fatalf("fileRead after fileWrite: %v", err)
+	}
+	if tok != token {
+		t.Errorf("expected %q, got %q", token, tok)
 	}
 }
 
