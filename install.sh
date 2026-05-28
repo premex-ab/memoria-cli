@@ -4,6 +4,9 @@ set -e
 REPO=premex-ab/memoria-cli
 DEST="${HOME}/.local/bin/memoria"
 
+# Clean up the temp file on any exit (success or failure).
+trap 'rm -f "${DEST}.tmp"' EXIT
+
 LATEST="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
   | grep '"tag_name"' | head -1 | cut -d'"' -f4)"
 
@@ -23,7 +26,8 @@ esac
 URL="https://github.com/${REPO}/releases/download/${LATEST}/memoria-${OS}-${ARCH}"
 
 mkdir -p "$(dirname "$DEST")"
-curl -fsSL "$URL" -o "$DEST"
+curl -fsSL "$URL" -o "${DEST}.tmp"
+mv "${DEST}.tmp" "$DEST"
 chmod +x "$DEST"
 
 echo "Installed memoria ${LATEST} to ${DEST}"

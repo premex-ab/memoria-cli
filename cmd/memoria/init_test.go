@@ -14,33 +14,6 @@ import (
 	"github.com/premex-ab/memoria-cli/internal/skill"
 )
 
-// fakeWhoamiServer returns a test server that asserts the inbound Authorization
-// header matches "Bearer <expectedToken>" (responding 401 otherwise) and replies
-// 200 with the given identity JSON on success.
-func fakeWhoamiServer(t *testing.T, expectedToken, tenantID, brainID string, scopes []string) *httptest.Server {
-	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/whoami" {
-			http.NotFound(w, r)
-			return
-		}
-		if r.Header.Get("Authorization") != "Bearer "+expectedToken {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte(`{"error":"missing or invalid Authorization header"}`))
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]any{
-			"tenantId": tenantID,
-			"brainId":  brainID,
-			"scopes":   scopes,
-			"kind":     "live",
-		})
-	}))
-}
-
 // fake401Server returns a test server that always replies 401.
 func fake401Server(t *testing.T) *httptest.Server {
 	t.Helper()
@@ -73,7 +46,7 @@ func TestInit_Success(t *testing.T) {
 	// Use env-var mode to avoid triggering the macOS keychain UI in tests.
 	t.Setenv("MEMORIA_API_KEY", "mem_live_testtoken")
 
-	srv := fakeWhoamiServer(t, "mem_live_testtoken", "t", "b", []string{"memory:read"})
+	srv := buildFakeWhoamiServer(t, "mem_live_testtoken", "t", "b", []string{"memory:read"})
 	defer srv.Close()
 
 	stdout, _, err := runInit(t, "mem_live_testtoken", "--api-url", srv.URL)
@@ -156,7 +129,7 @@ func TestInit_IdempotentSkillInstall(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("MEMORIA_API_KEY", "mem_live_testtoken2")
 
-	srv := fakeWhoamiServer(t, "mem_live_testtoken2", "t2", "b2", []string{"memory:read", "memory:write"})
+	srv := buildFakeWhoamiServer(t, "mem_live_testtoken2", "t2", "b2", []string{"memory:read", "memory:write"})
 	defer srv.Close()
 
 	// First run — should install the skill.

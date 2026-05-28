@@ -3,8 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,7 +29,7 @@ func runStatus(t *testing.T, args ...string) (stdout, stderr string, err error) 
 }
 
 // TestStatus_NoToken verifies that when no token is configured, status prints
-// the unconfigured message plus the CLI line and returns non-zero.
+// the unconfigured message plus the CLI line and returns exit 0 (informational).
 func TestStatus_NoToken(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -39,8 +37,8 @@ func TestStatus_NoToken(t *testing.T) {
 	t.Setenv("MEMORIA_API_KEY", "")
 
 	stdout, _, err := runStatus(t)
-	if err == nil {
-		t.Fatal("expected non-zero exit when no token configured, got nil error")
+	if err != nil {
+		t.Fatalf("expected exit 0 for no-token (informational), got: %v", err)
 	}
 
 	if !strings.Contains(stdout, "not configured") {
@@ -57,33 +55,25 @@ func TestStatus_NoToken(t *testing.T) {
 
 // TestStatus_HappyPath verifies the full output when a token is set, /v1/whoami
 // returns 200, ~/.claude.json has the memoria entry, and the skill exists.
+// The Skill line must show the version from the installed SKILL.md, and the MCP
+// line must show the URL stored in ~/.claude.json, not the --api-url flag.
 func TestStatus_HappyPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("MEMORIA_API_KEY", "mem_live_statustest")
 
 	// Spin up a fake whoami server.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/whoami" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"tenantId": "tenant1",
-			"brainId":  "brain1",
-			"scopes":   []string{"memory:read", "memory:write"},
-			"kind":     "live",
-		})
-	}))
+	srv := buildFakeWhoamiServer(t, "mem_live_statustest", "tenant1", "brain1",
+		[]string{"memory:read", "memory:write"})
 	defer srv.Close()
 
-	// Write ~/.claude.json with a memoria entry.
+	// Write ~/.claude.json with a memoria entry pointing at the fake server.
+	mcpURL := srv.URL + "/mcp"
 	claudeJSON := map[string]any{
 		"mcpServers": map[string]any{
 			"memoria": map[string]any{
 				"type":          "http",
-				"url":           srv.URL + "/mcp",
+				"url":           mcpURL,
 				"headersHelper": "memoria headers",
 			},
 		},
@@ -94,7 +84,8 @@ func TestStatus_HappyPath(t *testing.T) {
 		t.Fatalf("write ~/.claude.json: %v", err)
 	}
 
-	// Install the skill.
+	// Install the skill (embed the real embedded content so the version is
+	// readable from frontmatter).
 	skillDir := filepath.Join(home, ".claude", "skills", "memoria")
 	if err := os.MkdirAll(skillDir, 0o700); err != nil {
 		t.Fatalf("mkdir skill dir: %v", err)
@@ -103,29 +94,97 @@ func TestStatus_HappyPath(t *testing.T) {
 		t.Fatalf("write SKILL.md: %v", err)
 	}
 
+	// Determine expected installed version from the embedded content.
+	embVer, err := skill.EmbeddedVersion()
+	if err != nil {
+		t.Fatalf("EmbeddedVersion: %v", err)
+	}
+
 	stdout, _, err := runStatus(t, "--api-url", srv.URL)
 	if err != nil {
 		t.Fatalf("expected success, got: %v", err)
 	}
 
-	// Verify each expected line.
+	// Token line.
 	if !strings.Contains(stdout, "Token:") {
 		t.Errorf("expected 'Token:' line, got: %q", stdout)
 	}
+	// Brain line.
 	if !strings.Contains(stdout, "tenant1/brain1") {
 		t.Errorf("expected 'tenant1/brain1' in brain line, got: %q", stdout)
 	}
 	if !strings.Contains(stdout, "memory:read") {
 		t.Errorf("expected scopes in output, got: %q", stdout)
 	}
-	if !strings.Contains(stdout, "MCP:") && !strings.Contains(stdout, "configured at") {
-		t.Errorf("expected MCP line with URL, got: %q", stdout)
+	// MCP line must show the URL from ~/.claude.json, not the --api-url flag.
+	if !strings.Contains(stdout, "MCP:") {
+		t.Errorf("expected MCP line, got: %q", stdout)
 	}
+	if !strings.Contains(stdout, mcpURL) {
+		t.Errorf("expected MCP line to contain %q (from ~/.claude.json), got: %q", mcpURL, stdout)
+	}
+	// Skill line must show the version read from the installed file.
 	if !strings.Contains(stdout, "Skill:") {
 		t.Errorf("expected Skill line, got: %q", stdout)
 	}
+	if !strings.Contains(stdout, embVer) {
+		t.Errorf("expected Skill line to contain version %q, got: %q", embVer, stdout)
+	}
+	// CLI line.
 	if !strings.Contains(stdout, "CLI:") {
 		t.Errorf("expected CLI line, got: %q", stdout)
+	}
+}
+
+// TestStatus_StaleSkill verifies that when the installed SKILL.md carries an
+// older version than the binary embeds, the status line hints to re-run init.
+func TestStatus_StaleSkill(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("MEMORIA_API_KEY", "mem_live_staleskill")
+
+	srv := buildFakeWhoamiServer(t, "mem_live_staleskill", "t", "b",
+		[]string{"memory:read"})
+	defer srv.Close()
+
+	// Write ~/.claude.json.
+	claudeJSON := map[string]any{
+		"mcpServers": map[string]any{
+			"memoria": map[string]any{
+				"type": "http",
+				"url":  srv.URL + "/mcp",
+			},
+		},
+	}
+	claudeBytes, _ := json.MarshalIndent(claudeJSON, "", "  ")
+	if err := os.WriteFile(filepath.Join(home, ".claude.json"), claudeBytes, 0o600); err != nil {
+		t.Fatalf("write ~/.claude.json: %v", err)
+	}
+
+	// Write a SKILL.md with an older version than what the binary embeds (0.1.0).
+	skillDir := filepath.Join(home, ".claude", "skills", "memoria")
+	if err := os.MkdirAll(skillDir, 0o700); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	staleContent := strings.Replace(string(skill.EmbeddedSKILL), "version: 0.1.0", "version: 0.0.1", 1)
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(staleContent), 0o600); err != nil {
+		t.Fatalf("write stale SKILL.md: %v", err)
+	}
+
+	stdout, _, err := runStatus(t, "--api-url", srv.URL)
+	if err != nil {
+		t.Fatalf("expected exit 0, got: %v", err)
+	}
+
+	// Must mention both the installed version and the binary-embedded version.
+	if !strings.Contains(stdout, "installed 0.0.1") {
+		t.Errorf("expected 'installed 0.0.1' in Skill line, got: %q", stdout)
+	}
+	if !strings.Contains(stdout, "binary embeds 0.1.0") {
+		t.Errorf("expected 'binary embeds 0.1.0' in Skill line, got: %q", stdout)
+	}
+	if !strings.Contains(stdout, "memoria init") {
+		t.Errorf("expected 'memoria init' refresh hint in Skill line, got: %q", stdout)
 	}
 }
 
@@ -137,10 +196,7 @@ func TestStatus_TokenRevoked(t *testing.T) {
 	t.Setenv("MEMORIA_API_KEY", "mem_live_revoked")
 
 	// Fake server always returns 401.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"error":"revoked"}`))
-	}))
+	srv := fake401Server(t)
 	defer srv.Close()
 
 	// Write minimal ~/.claude.json so MCP check passes.
@@ -178,17 +234,8 @@ func TestStatus_MissingMcpEntry(t *testing.T) {
 	t.Setenv("MEMORIA_API_KEY", "mem_live_statustest2")
 
 	// Spin up a whoami server.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/whoami" {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{
-				"tenantId": "t",
-				"brainId":  "b",
-				"scopes":   []string{"memory:read"},
-				"kind":     "live",
-			})
-		}
-	}))
+	srv := buildFakeWhoamiServer(t, "mem_live_statustest2", "t", "b",
+		[]string{"memory:read"})
 	defer srv.Close()
 
 	// ~/.claude.json exists but has no memoria server.
@@ -220,17 +267,8 @@ func TestStatus_MissingSkill(t *testing.T) {
 	t.Setenv("MEMORIA_API_KEY", "mem_live_statustest3")
 
 	// Spin up a whoami server.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/whoami" {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{
-				"tenantId": "t",
-				"brainId":  "b",
-				"scopes":   []string{"memory:read"},
-				"kind":     "live",
-			})
-		}
-	}))
+	srv := buildFakeWhoamiServer(t, "mem_live_statustest3", "t", "b",
+		[]string{"memory:read"})
 	defer srv.Close()
 
 	// Write ~/.claude.json with memoria entry.

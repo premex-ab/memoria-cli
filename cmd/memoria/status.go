@@ -36,7 +36,8 @@ whether ~/.claude.json has the MCP entry, and whether the skill is installed.`,
 			if errors.Is(err, auth.ErrNoToken) {
 				fmt.Fprintln(stdout, "Token:    not configured — run `memoria init <token>`")
 				printCLILine(cmd)
-				return err
+				// ErrNoToken is informational — the command itself succeeded.
+				return nil
 			}
 			if err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "memoria: resolve token: %v\n", err)
@@ -61,26 +62,31 @@ whether ~/.claude.json has the MCP entry, and whether the skill is installed.`,
 					whoami.TenantID, whoami.BrainID, scopes)
 			}
 
-			// MCP: confirm entry in ~/.claude.json.
-			mcpURL := apiURL + "/mcp"
-			if _, mcpErr := resolveMCPURL(); mcpErr != nil {
+			// MCP: confirm entry in ~/.claude.json, and display the stored URL.
+			storedMCPURL, mcpErr := resolveMCPURL()
+			if mcpErr != nil {
 				fmt.Fprintln(stdout, "MCP:      NOT configured in ~/.claude.json — re-run `memoria init`")
 			} else {
-				fmt.Fprintf(stdout, "MCP:      configured at %s\n", mcpURL)
+				fmt.Fprintf(stdout, "MCP:      configured at %s\n", storedMCPURL)
 			}
 
-			// Skill: confirm the file exists.
+			// Skill: read the installed SKILL.md frontmatter version.
 			home, homeErr := os.UserHomeDir()
 			if homeErr == nil {
 				skillPath := filepath.Join(home, ".claude", "skills", "memoria", "SKILL.md")
-				if _, statErr := os.Stat(skillPath); errors.Is(statErr, os.ErrNotExist) {
+				installedVer, skillErr := skill.InstalledVersion(home)
+				if errors.Is(skillErr, os.ErrNotExist) {
 					fmt.Fprintln(stdout, "Skill:    NOT installed — re-run `memoria init`")
-				} else if statErr == nil {
-					embVer, verErr := skill.EmbeddedVersion()
-					if verErr != nil {
-						embVer = "unknown"
+				} else if skillErr != nil {
+					fmt.Fprintf(stdout, "Skill:    %s (unable to read version: %v)\n", skillPath, skillErr)
+				} else {
+					embVer, _ := skill.EmbeddedVersion()
+					if embVer != "" && embVer != installedVer {
+						fmt.Fprintf(stdout, "Skill:    %s (installed %s, binary embeds %s — run `memoria init` to refresh)\n",
+							skillPath, installedVer, embVer)
+					} else {
+						fmt.Fprintf(stdout, "Skill:    %s (version %s)\n", skillPath, installedVer)
 					}
-					fmt.Fprintf(stdout, "Skill:    %s (version %s)\n", skillPath, embVer)
 				}
 			}
 

@@ -19,6 +19,12 @@ import (
 // executablePath is a variable so tests can override it.
 var executablePath = os.Executable
 
+// maxBinarySize is the maximum number of bytes we will read from a binary
+// download response. The real memoria binary is well under 20 MB; 100 MB is a
+// generous ceiling that still protects against a runaway or malicious server
+// filling disk / exhausting memory.
+const maxBinarySize = 100 << 20 // 100 MB
+
 // defaultReleasesURL is the default GitHub releases latest endpoint.
 const defaultReleasesURL = "https://api.github.com/repos/premex-ab/memoria-cli/releases/latest"
 
@@ -198,9 +204,16 @@ func downloadAndReplace(client *http.Client, url, dir, destPath string) error {
 		}
 	}()
 
-	if _, err := io.Copy(tmp, resp.Body); err != nil {
+	written, err := io.Copy(tmp, io.LimitReader(resp.Body, maxBinarySize))
+	if err != nil {
 		tmp.Close()
 		return fmt.Errorf("write download: %w", err)
+	}
+	// If we hit the ceiling exactly, the server may have been serving more.
+	// Treat this as an error rather than silently accepting a truncated binary.
+	if written == maxBinarySize && resp.ContentLength > maxBinarySize {
+		tmp.Close()
+		return fmt.Errorf("download exceeded %d-byte ceiling (Content-Length: %d)", maxBinarySize, resp.ContentLength)
 	}
 	if err := tmp.Chmod(0o755); err != nil {
 		tmp.Close()
@@ -219,7 +232,12 @@ func downloadAndReplace(client *http.Client, url, dir, destPath string) error {
 
 // bumpLastChecked updates LastChecked in the state file. Non-fatal: ignores errors.
 func bumpLastChecked() {
-	state, _ := config.Read()
+	state, err := config.Read()
+	if err != nil {
+		// Don't overwrite a state file we couldn't read — that risks blowing
+		// away BoundTenant/BoundBrain/TokenSource.
+		return
+	}
 	state.LastChecked = time.Now().UTC()
-	config.Write(state) //nolint:errcheck — best-effort
+	_ = config.Write(state) //nolint:errcheck — best-effort
 }

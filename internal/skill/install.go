@@ -61,6 +61,21 @@ func EmbeddedVersion() (string, error) {
 	return parseFrontmatterVersion(EmbeddedSKILL)
 }
 
+// InstalledVersion reads the SKILL.md at homeDir/.claude/skills/memoria/SKILL.md
+// and returns the version declared in its frontmatter.
+//
+// Returns ("", os.ErrNotExist) (wrapped) if the file is absent, so callers can
+// use errors.Is(err, os.ErrNotExist) to distinguish missing from malformed.
+func InstalledVersion(homeDir string) (string, error) {
+	destPath := filepath.Join(homeDir, ".claude", "skills", "memoria", "SKILL.md")
+	data, err := os.ReadFile(destPath)
+	if err != nil {
+		// Preserve os.ErrNotExist so callers can use errors.Is.
+		return "", err
+	}
+	return parseFrontmatterVersion(data)
+}
+
 // Result describes what Install did.
 type Result struct {
 	Outcome         Outcome
