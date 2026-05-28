@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/premex-ab/memoria-cli/internal/version"
 )
 
 // TestEmbeddedVersion confirms the embedded SKILL.md frontmatter parses and
@@ -199,8 +201,9 @@ func TestInstall_OverwritesUnparseable(t *testing.T) {
 	}
 }
 
-// TestCompareSemver covers the full comparison matrix.
-func TestCompareSemver(t *testing.T) {
+// TestCompareSemver_ViaVersion delegates to the version package's exported
+// CompareSemver and verifies the skill package can use it correctly.
+func TestCompareSemver_ViaVersion(t *testing.T) {
 	cases := []struct {
 		a, b string
 		want int
@@ -222,9 +225,9 @@ func TestCompareSemver(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		got := compareSemver(c.a, c.b)
+		got := version.CompareSemver(c.a, c.b)
 		if got != c.want {
-			t.Errorf("compareSemver(%q, %q) = %d, want %d", c.a, c.b, got, c.want)
+			t.Errorf("version.CompareSemver(%q, %q) = %d, want %d", c.a, c.b, got, c.want)
 		}
 	}
 }
