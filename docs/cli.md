@@ -65,6 +65,12 @@ curl -fsSL https://api.memoria.premex.se/install.sh | sh
 memoria init "$MEMORIA_API_KEY"
 ```
 
+**Pin a version** (optional) for reproducible installs — and to skip the GitHub release lookup entirely, which sidesteps GitHub's unauthenticated API rate limit on shared CI/sandbox egress IPs. Set `MEMORIA_VERSION`:
+
+```sh
+curl -fsSL https://api.memoria.premex.se/install.sh | MEMORIA_VERSION=cli/v0.1.0 sh
+```
+
 ---
 
 ### `memoria headers`
