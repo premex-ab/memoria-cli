@@ -55,15 +55,42 @@ memoria init mem_live_<your-key>
 |---|---|---|
 | `--api-url URL` | `https://api.memoria.premex.se` | Override the API base URL (useful for self-hosted or staging) |
 
-**Cloud environment setup:**
+**Cloud / CI environment setup:**
 
-When `MEMORIA_API_KEY` is already set in the environment, `memoria init` skips the keychain write and records the install as "env-var mode." The `memoria headers` command reads from the env var at MCP connection time. This is the recommended pattern for CI and cloud development environments:
+When `MEMORIA_API_KEY` is set in the environment, `memoria init` skips the keychain write and records the install as "env-var mode"; `memoria headers` then reads the key at MCP connection time. This is the pattern for CI and cloud dev environments **where environment variables are available to setup/bootstrap scripts** — GitHub Actions, Codespaces, devcontainers, etc.:
 
 ```sh
-# Cloud setup script
+# Setup script
 curl -fsSL https://api.memoria.premex.se/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"   # the installer writes to ~/.local/bin
 memoria init "$MEMORIA_API_KEY"
 ```
+
+**Claude Code on the web is different.** Variables you set in the environment's *Environment variables* panel are **not** available to the *Setup script* — Claude Code injects them only once the session is running. So `$MEMORIA_API_KEY` is empty during setup, and `memoria init "$MEMORIA_API_KEY"` fails with `token rejected by server`. Use one of these instead:
+
+- **Declarative MCP (recommended — no CLI needed).** Commit a `.mcp.json` to your repo. Claude Code expands `${MEMORIA_API_KEY}` from the panel at MCP connection time (which *is* runtime, where the variable exists):
+
+```json
+{
+  "mcpServers": {
+    "memoria": {
+      "type": "http",
+      "url": "https://api.memoria.premex.se/mcp",
+      "headers": { "Authorization": "Bearer ${MEMORIA_API_KEY}" }
+    }
+  }
+}
+```
+
+- **Inline key in the setup script.** Pass the key directly to `memoria init` — don't reference `$MEMORIA_API_KEY`, which isn't set yet:
+
+```sh
+curl -fsSL https://api.memoria.premex.se/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+memoria init "mem_live_…"
+```
+
+Either way the key lives in your environment config, which is visible to anyone with access to that environment — use a dedicated, revocable key.
 
 **Pin a version** (optional) for reproducible installs — and to skip the GitHub release lookup entirely, which sidesteps GitHub's unauthenticated API rate limit on shared CI/sandbox egress IPs. Set `MEMORIA_VERSION`:
 
